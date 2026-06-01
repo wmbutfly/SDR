@@ -184,8 +184,23 @@ class UDPListener:
             print(f"正在写入 pcap 文件: {self.output}")
 
         try:
+            # 找到对应的网络接口
+            from scapy.all import get_if_list, get_if_addr
+            target_iface = None
+            for iface in get_if_list():
+                try:
+                    if get_if_addr(iface) == self.ip:
+                        target_iface = iface
+                        break
+                except:
+                    pass
+
+            if target_iface:
+                print(f"使用网络接口: {target_iface}")
+
             # 开始抓包
             sniff(
+                iface=target_iface,
                 filter=filter_str,
                 prn=self._process_packet,
                 store=False,

@@ -18,13 +18,12 @@ from scapy.compat import raw
 
 
 class PcapAppendWriter:
-    """PCAP 文件写入器，支持追加写入报文"""
+    """PCAP 文件写入器，支持追加写入报文（仅存储 UDP 载荷数据）"""
 
-    def __init__(self, filename, snaplen=65535, linktype=1):
+    def __init__(self, filename, snaplen=65535, linktype=101):  # linktype 101 = Raw IP
         self.filename = filename
         self.snaplen = snaplen
         self.linktype = linktype
-        self.first_packet = True
         self.packet_count = 0
 
         # 以追加二进制模式打开文件
@@ -44,6 +43,7 @@ class PcapAppendWriter:
         import struct
 
         # PCAP 全局文件头 (小端序)
+        # linktype 101 = Raw IP (仅 IP 头，不含以太网头)
         magic = 0xa1b2c3d4
         version_major = 2
         version_minor = 4
@@ -65,24 +65,34 @@ class PcapAppendWriter:
         self.f.write(header)
 
     def write_packet(self, packet):
-        """将单个报文写入 PCAP 文件"""
+        """将 UDP 载荷数据写入 PCAP 文件（剥除链路层和 IP/UDP 头）"""
         import struct
 
-        # 获取报文原始字节
-        pkt_bytes = bytes(packet)
+        # 提取 UDP 载荷数据（剥除 IP 头和 UDP 头）
+        if UDP in packet and Raw in packet:
+            payload = bytes(packet[Raw].load)
+        elif UDP in packet:
+            # UDP 报文但无载荷
+            return
+        else:
+            # 不是 UDP 报文，跳过
+            return
+
+        if len(payload) == 0:
+            return
 
         # 时间戳（秒和微秒）
         ts_sec = int(packet.time)
         ts_usec = int((packet.time - ts_sec) * 1000000)
 
         # 长度信息
-        incl_len = len(pkt_bytes)
+        incl_len = len(payload)
         orig_len = incl_len
 
-        # 报文记录头 (16 字节) + 报文数据
+        # 报文记录头 (16 字节) + 载荷数据
         pkt_header = struct.pack('<IIII', ts_sec, ts_usec, incl_len, orig_len)
         self.f.write(pkt_header)
-        self.f.write(pkt_bytes)
+        self.f.write(payload)
 
         self.packet_count += 1
 
@@ -103,11 +113,12 @@ class PcapAppendWriter:
 class UDPListener:
     """UDP 监听器，支持控制台展示和 pcap 写入两种模式"""
 
-    def __init__(self, ip='192.168.1.100', port=8890, mode='console', output=None):
+    def __init__(self, ip='192.168.1.100', port=8890, mode='console', output=None, duration=0):
         self.ip = ip
         self.port = port
         self.mode = mode
         self.output = output
+        self.duration = duration  # 0 表示持续运行
         self.packet_count = 0
         self.running = False
         self.writer = None
@@ -198,14 +209,19 @@ class UDPListener:
             if target_iface:
                 print(f"使用网络接口: {target_iface}")
 
-            # 开始抓包
-            sniff(
-                iface=target_iface,
-                filter=filter_str,
-                prn=self._process_packet,
-                store=False,
-                stop_filter=lambda _: not self.running
-            )
+            # 开始抓包，使用 timeout 确保能及时停止
+            sniff_kwargs = {
+                'iface': target_iface,
+                'filter': filter_str,
+                'prn': self._process_packet,
+                'store': False,
+                'stop_filter': lambda _: not self.running
+            }
+            if self.duration > 0:
+                print(f"监听时长: {self.duration} 秒")
+                sniff_kwargs['timeout'] = self.duration + 1
+
+            sniff(**sniff_kwargs)
         except KeyboardInterrupt:
             pass
         finally:
@@ -266,6 +282,13 @@ def parse_args():
         help='pcap 输出文件路径 (pcap 模式必需)'
     )
 
+    parser.add_argument(
+        '--duration',
+        type=int,
+        default=0,
+        help='监听时长（秒），0 表示持续运行 (默认: 0)'
+    )
+
     args = parser.parse_args()
 
     # 验证 pcap 模式必须指定输出文件
@@ -283,7 +306,8 @@ def main():
         ip=args.ip,
         port=args.port,
         mode=args.mode,
-        output=args.output
+        output=args.output,
+        duration=args.duration
     )
 
     listener.start()

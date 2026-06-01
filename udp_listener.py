@@ -10,6 +10,7 @@ import argparse
 import signal
 import sys
 import time
+import threading
 from datetime import datetime
 
 # Scapy 库用于网络抓包
@@ -17,10 +18,25 @@ from scapy.all import sniff, UDP, IP, wrpcap, Raw
 from scapy.compat import raw
 
 
+# 全局停止事件
+stop_event = threading.Event()
+
+
+def signal_handler(signum, frame):
+    """处理 Ctrl+C 信号，实现优雅退出"""
+    print("\n\n接收到中断信号，正在关闭...", file=sys.stderr)
+    stop_event.set()
+
+
+# 注册信号处理器
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
+
 class PcapAppendWriter:
     """PCAP 文件写入器，支持追加写入报文（仅存储 UDP 载荷数据）"""
 
-    def __init__(self, filename, snaplen=65535, linktype=101):  # linktype 101 = Raw IP
+    def __init__(self, filename, snaplen=65535, linktype=127):  # linktype 127 = 802.11 Radiotap
         self.filename = filename
         self.snaplen = snaplen
         self.linktype = linktype
@@ -65,17 +81,14 @@ class PcapAppendWriter:
         self.f.write(header)
 
     def write_packet(self, packet):
-        """将 UDP 载荷数据写入 PCAP 文件（剥除链路层和 IP/UDP 头）"""
+        """将 UDP 载荷（WiFi 完整帧）写入 PCAP 文件"""
         import struct
 
-        # 提取 UDP 载荷数据（剥除 IP 头和 UDP 头）
-        if UDP in packet and Raw in packet:
-            payload = bytes(packet[Raw].load)
-        elif UDP in packet:
-            # UDP 报文但无载荷
-            return
+        # UDP 载荷包含：MAC 头 + IP 头 + UDP 头 + 应用数据
+        # packet[UDP].payload 就是 UDP 载荷（不含 UDP 头）
+        if UDP in packet:
+            payload = bytes(packet[UDP].payload)
         else:
-            # 不是 UDP 报文，跳过
             return
 
         if len(payload) == 0:
@@ -89,7 +102,7 @@ class PcapAppendWriter:
         incl_len = len(payload)
         orig_len = incl_len
 
-        # 报文记录头 (16 字节) + 载荷数据
+        # 报文记录头 (16 字节) + WiFi 帧数据
         pkt_header = struct.pack('<IIII', ts_sec, ts_usec, incl_len, orig_len)
         self.f.write(pkt_header)
         self.f.write(payload)
@@ -122,15 +135,6 @@ class UDPListener:
         self.packet_count = 0
         self.running = False
         self.writer = None
-
-        # 设置信号处理器以实现优雅退出
-        signal.signal(signal.SIGINT, self._signal_handler)
-        signal.signal(signal.SIGTERM, self._signal_handler)
-
-    def _signal_handler(self, signum, frame):
-        """处理 Ctrl+C 信号，实现优雅退出"""
-        print("\n\n接收到中断信号，正在关闭...")
-        self.running = False
 
     def _print_packet(self, packet):
         """在控制台打印报文信息"""
@@ -175,7 +179,7 @@ class UDPListener:
 
     def start(self):
         """开始监听 UDP 报文"""
-        self.running = True
+        self.packet_count = 0
 
         # 构造 BPF 过滤器，只捕获发往指定端口的 UDP 报文
         filter_str = f"udp and port {self.port}"
@@ -194,6 +198,9 @@ class UDPListener:
             self.writer = PcapAppendWriter(self.output)
             print(f"正在写入 pcap 文件: {self.output}")
 
+        # 重置停止事件
+        stop_event.clear()
+
         try:
             # 找到对应的网络接口
             from scapy.all import get_if_list, get_if_addr
@@ -209,13 +216,13 @@ class UDPListener:
             if target_iface:
                 print(f"使用网络接口: {target_iface}")
 
-            # 开始抓包，使用 timeout 确保能及时停止
+            # 开始抓包
             sniff_kwargs = {
                 'iface': target_iface,
                 'filter': filter_str,
                 'prn': self._process_packet,
                 'store': False,
-                'stop_filter': lambda _: not self.running
+                'stop_filter': lambda _: stop_event.is_set()
             }
             if self.duration > 0:
                 print(f"监听时长: {self.duration} 秒")

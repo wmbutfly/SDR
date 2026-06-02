@@ -11,6 +11,8 @@ import signal
 import sys
 import time
 import datetime
+import subprocess
+import json
 
 
 PCAP_MAGIC = 0xa1b2c3d4
@@ -89,6 +91,16 @@ def parse_args():
                         help='总文件数上限，超限删最老 (默认: 0=不限)')
     parser.add_argument('--max-total', '-m', type=str, default='1G',
                         help='总磁盘占用上限，超限删最老 (默认: 1G)')
+    parser.add_argument('--mqtt-host', type=str, default='localhost',
+                        help='MQTT broker 地址 (默认: localhost)')
+    parser.add_argument('--mqtt-port', type=int, default=1883,
+                        help='MQTT broker 端口 (默认: 1883)')
+    parser.add_argument('--mqtt-topic', type=str, default='FromSDR',
+                        help='MQTT 主题 (默认: FromSDR)')
+    parser.add_argument('--mqtt-user', type=str, default='admin',
+                        help='MQTT 用户名 (默认: admin)')
+    parser.add_argument('--mqtt-password', type=str, default='123456',
+                        help='MQTT 密码 (默认: 123456)')
     return parser.parse_args()
 
 
@@ -150,6 +162,21 @@ def trim_total_size(directory, prefix, max_bytes):
             pass
 
 
+def mqtt_publish(host, port, topic, user, password, payload):
+    try:
+        subprocess.run(
+            ['mosquitto_pub',
+             '-h', host,
+             '-p', str(port),
+             '-t', topic,
+             '-u', user,
+             '-P', password,
+             '-m', payload],
+            capture_output=True, timeout=5)
+    except Exception as e:
+        print(f'  [MQTT 失败] {e}', flush=True)
+
+
 def main():
     args = parse_args()
 
@@ -173,6 +200,11 @@ def main():
     f = open(pcap_path, 'wb')
     write_pcap_header(f, linktype=linktype)
 
+    # MQTT 启动通知
+    start_payload = json.dumps({'op': 'start', 'mod': args.type, 'channel': '1'})
+    mqtt_publish(args.mqtt_host, args.mqtt_port, args.mqtt_topic,
+                 args.mqtt_user, args.mqtt_password, start_payload)
+
     print(f'UDP → PCAP 保存器已启动')
     print(f'  监听: {args.ip}:{args.port}')
     print(f'  输出目录: {os.path.abspath(out_dir)}')
@@ -183,6 +215,7 @@ def main():
         print(f'  总空间上限: {args.max_total}')
     if args.max_files > 0:
         print(f'  总文件上限: {args.max_files} 个')
+    print(f'  MQTT: {args.mqtt_host}:{args.mqtt_port} topic={args.mqtt_topic}')
     print(f'  (Ctrl+C 停止)')
     print('=' * 80, flush=True)
 
@@ -230,6 +263,11 @@ def main():
             break
 
     f.close()
+
+    stop_payload = json.dumps({'op': 'stop'})
+    mqtt_publish(args.mqtt_host, args.mqtt_port, args.mqtt_topic,
+                 args.mqtt_user, args.mqtt_password, stop_payload)
+
     print(f'\n统计: 共保存 {total_packets} 个报文')
     print(f'  输出目录: {os.path.abspath(out_dir)}')
 

@@ -1,88 +1,116 @@
-# SDR 调试工具集
+# UDP Pcap Saver
 
-WSL 环境下接收板子 UDP 数据 + 转存 pcap 的工具链。
-
-## 场景
-
-板子 (`192.168.1.1`) 向 PC (`192.168.1.100:8890`) 发送 UDP 报文，载荷为 802.11 Radiotap 帧。
-
-WSL 2 使用 NAT，需 Windows 中转 UDP。
+UDP 监听 + 实时展示 + pcap 归档。纯 socket，无需 scapy。
 
 ## 文件说明
 
 | 文件 | 运行位置 | 作用 |
 |------|---------|------|
-| `udp_fwd.py` | **Windows** | 监听 `:8890`，将 UDP 转发到 WSL (`172.21.38.252:8890`) |
-| `udp_pcap_saver.py` | **WSL** | 接收 UDP，实时显示 hex+ascii，同时写入 pcap 文件 |
-| `test_udp_listener.py` | **WSL** | 仅展示的纯 socket 监听器（无 pcap 保存） |
-| `udp_listener.py` | **Ubuntu** | scapy 版监听器，支持 `--iface` 等高级选项（需要 `sudo`） |
+| `udp_pcap_saver.py` | **WSL / Ubuntu** | UDP 监听，hex/ascii 实时显示，pcap 文件保存 |
+| `udp_fwd.py` | **Windows** | 将 UDP 从 Windows 转发到 WSL（WSL2 NAT 需要） |
+| `udp_listener.py` | Ubuntu | scapy 版（需要 `sudo`），功能更全 |
 
-## 启动
-
-### 1. Windows UDP 转发
-
-```powershell
-python C:\Users\admin\SDR\udp_fwd.py
-```
-
-### 2. WSL 监听 + pcap 保存
-
-```bash
-nohup python3 /mnt/c/Users/admin/SDR/udp_pcap_saver.py > /tmp/pcap_saver.log 2>&1 &
-```
-
-查看实时收包：
-
-```bash
-tail -f /tmp/pcap_saver.log
-```
-
-输出示例：
-
-```
-[#0001] [13:51:50.049] 172.21.32.1:8890 → 331B
-         hex: 00003c002f4010a0200800a0200800a0200800a02008000001812b6900000000...
-       ascii: ..<./@.. ... ... ... .....+i....
-```
-
-### 3. 停止
-
-```bash
-pkill -f udp_pcap_saver.py    # WSL
-# Windows 转发直接关窗口或 Ctrl+C
-```
-
-## pcap 文件
-
-自动生成 `udp_capture.pcap`，用 Wireshark 打开，linktype 选 **802.11 + Radiotap (127)**。
-
-## MQTT 测试
-
-EMQX 运行在 WSL Docker 中：
-
-```bash
-docker ps --filter name=emqx
-```
-
-端口转发已配置：`192.168.1.100:1883` → WSL `:1883`。
-
-板子测试：
-
-```bash
-mosquitto_pub -h 192.168.1.100 -p 1883 -t "board/data" -m "hello"
-```
-
-## 部署到真实 Ubuntu
-
-将 `udp_pcap_saver.py` 拷贝到 Ubuntu，直接运行（无需转发层）：
+## 快速开始
 
 ```bash
 python3 udp_pcap_saver.py
 ```
 
-需要 scapy 版则用 `udp_listener.py`：
+自动生成 `wifi_20260602_141008.pcap`，监听 `0.0.0.0:8890`。
+
+## 参数
+
+| 参数 | 默认 | 说明 |
+|------|------|------|
+| `--ip` | `0.0.0.0` | 监听 IP |
+| `--port` | `8890` | 监听端口 |
+| `-t`, `--type` | `wifi` | 数据类型：`wifi`, `ble`, `ble_phdr` |
+| `-o`, `--output` | 当前目录 | 输出目录，不存在自动创建 |
+| `-s`, `--max-size` | `1M` | 单文件上限，超限自动滚动 |
+| `-m`, `--max-total` | `1G` | 总磁盘占用上限，超限删最老 |
+| `-n`, `--max-files` | `0` | 总文件数上限，超限删最老（0=不限） |
+| `--linktype` | 自动 | 强制指定 pcap linktype，覆盖 `--type` |
+
+## 类型
+
+| `--type` | 文件名 | linktype | 说明 |
+|----------|--------|----------|------|
+| `wifi` | `wifi_20260602_141008.pcap` | 127 | 802.11 + Radiotap |
+| `ble` | `ble_20260602_141008.pcap` | 251 | Bluetooth LE LL |
+| `ble_phdr` | `ble_phdr_20260602_141008.pcap` | 256 | Bluetooth LE LL + PHDR |
+
+## 示例
 
 ```bash
-sudo apt install python3-scapy
-sudo python3 udp_listener.py --ip 192.168.1.100 --port 8890 --mode console
+# 基本（默认 1M 切文件，总空间 1G）
+python3 udp_pcap_saver.py
+
+# 指定 IP 端口 + 类型
+python3 udp_pcap_saver.py --ip 0.0.0.0 --port 8890 -t wifi
+
+# 输出到指定目录
+python3 udp_pcap_saver.py -t wifi -o /data/captures/
+
+# 每 50MB 切文件，总空间 500MB
+python3 udp_pcap_saver.py -t wifi -o /data/captures/ -s 50M -m 500M
+
+# 最多 20 个文件 + 总空间 1GB
+python3 udp_pcap_saver.py -t wifi -s 10M -n 20 -m 1G
+
+# BLE 数据
+python3 udp_pcap_saver.py -t ble -s 10M -m 200M
+
+# 手动指定 linktype
+python3 udp_pcap_saver.py -t wifi --linktype 1
+```
+
+## WSL2 转发
+
+WSL2 使用 NAT，需 Windows 中转才能收到板子的 UDP。
+
+**Windows 上跑：**
+
+```powershell
+python C:\Users\admin\SDR\udp_fwd.py
+```
+
+**WSL 里跑：**
+
+```bash
+nohup python3 udp_pcap_saver.py > /tmp/pcap_saver.log 2>&1 &
+tail -f /tmp/pcap_saver.log
+```
+
+**停止：**
+
+```bash
+kill $(cat /tmp/pcap_saver.pid)
+```
+
+## 输出示例
+
+```
+[#0001] [15:26:28.294] 127.0.0.1:9020 → 100B
+         hex: e96cb1036ecb7e73ed304bfbda7789435b613d5cb4fe03d12f2e2ab4e28d2b6a...
+       ascii: .l..n.~s.0K..w.C[a=\..../.*...+j
+```
+
+## 滚动文件命名
+
+自动命名时每次滚动生成独立文件：
+
+```
+wifi_20260602_141008.pcap          ← 初始
+wifi_20260602_141008_001.pcap      ← 第一次滚动
+wifi_20260602_141008_002.pcap      ← 第二次滚动
+```
+
+超过 `-n` 或 `-m` 限制时，最老文件自动删除。
+
+## 部署到真实 Ubuntu
+
+直接跑，不需要转发层：
+
+```bash
+python3 udp_pcap_saver.py --port 8890 -t wifi -s 50M -m 500M
 ```

@@ -29,7 +29,14 @@ python3 udp_pcap_saver.py
 | `-s`, `--max-size` | `1M` | 单文件上限，超限自动滚动 |
 | `-m`, `--max-total` | `1G` | 总磁盘占用上限，超限删最老 |
 | `-n`, `--max-files` | `0` | 总文件数上限，超限删最老（0=不限） |
+| `-c`, `--channel` | `1` | WiFi 信道号，逗号分隔多信道（如 `1,6,11`） |
 | `--linktype` | 自动 | 强制指定 pcap linktype，覆盖 `--type` |
+| `--mqtt-host` | `localhost` | MQTT broker 地址 |
+| `--mqtt-port` | `1883` | MQTT broker 端口 |
+| `--mqtt-topic` | `FromSDR` | MQTT 主题 |
+| `--mqtt-user` | `admin` | MQTT 用户名 |
+| `--mqtt-password` | `123456` | MQTT 密码 |
+| `--mqtt-qos` | `1` | MQTT QoS 级别（0/1/2） |
 
 ## 类型
 
@@ -60,8 +67,42 @@ python3 udp_pcap_saver.py -t wifi -s 10M -n 20 -m 1G
 # BLE 数据
 python3 udp_pcap_saver.py -t ble -s 10M -m 200M
 
+# 指定信道
+python3 udp_pcap_saver.py -c 1,6,11
+
+# 自定义 MQTT
+python3 udp_pcap_saver.py --mqtt-host 192.168.1.100 --mqtt-qos 1
+
 # 手动指定 linktype
 python3 udp_pcap_saver.py -t wifi --linktype 1
+```
+
+## MQTT 通知
+
+启动时发送 `{"op": "start", "mod": "wifi", "channel": "1"}`，停止时发送 `{"op": "stop"}`。
+
+EMQX broker 运行在 Docker：
+
+```bash
+# 新机器一键安装
+sudo ./setup_emqx.sh
+
+# 或单独启动
+docker run -d --name emqx --restart always \
+  -p 1883:1883 -p 18083:18083 \
+  -v emqx-data:/opt/emqx/data \
+  emqx/emqx:latest
+```
+
+Dashboard: `http://localhost:18083` 账号 `admin` 密码 `public`。
+连接需用户认证，创建方式见源码或使用匿名模式。
+
+## BLE 接收
+
+用法与 WiFi 相同，改 `-t` 即可。pcap 文件 linktype=251，Wireshark 自动按 BLE 解析。
+
+```bash
+python3 udp_pcap_saver.py -t ble -o /data/ble_captures/ -s 10M -m 200M
 ```
 
 ## WSL2 转发

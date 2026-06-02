@@ -101,6 +101,8 @@ def parse_args():
                         help='MQTT 用户名 (默认: admin)')
     parser.add_argument('--mqtt-password', type=str, default='123456',
                         help='MQTT 密码 (默认: 123456)')
+    parser.add_argument('--mqtt-qos', type=int, default=0, choices=[0, 1, 2],
+                        help='MQTT QoS 级别 (默认: 0)')
     return parser.parse_args()
 
 
@@ -162,17 +164,17 @@ def trim_total_size(directory, prefix, max_bytes):
             pass
 
 
-def mqtt_publish(host, port, topic, user, password, payload):
+def mqtt_publish(host, port, topic, user, password, payload, qos=0):
     try:
-        subprocess.run(
-            ['mosquitto_pub',
-             '-h', host,
-             '-p', str(port),
-             '-t', topic,
-             '-u', user,
-             '-P', password,
-             '-m', payload],
-            capture_output=True, timeout=5)
+        cmd = ['mosquitto_pub',
+               '-h', host,
+               '-p', str(port),
+               '-t', topic,
+               '-u', user,
+               '-P', password,
+               '-m', payload,
+               '-q', str(qos)]
+        subprocess.run(cmd, capture_output=True, timeout=5)
     except Exception as e:
         print(f'  [MQTT 失败] {e}', flush=True)
 
@@ -203,7 +205,7 @@ def main():
     # MQTT 启动通知
     start_payload = json.dumps({'op': 'start', 'mod': args.type, 'channel': '1'})
     mqtt_publish(args.mqtt_host, args.mqtt_port, args.mqtt_topic,
-                 args.mqtt_user, args.mqtt_password, start_payload)
+                 args.mqtt_user, args.mqtt_password, start_payload, args.mqtt_qos)
 
     print(f'UDP → PCAP 保存器已启动')
     print(f'  监听: {args.ip}:{args.port}')
@@ -266,7 +268,7 @@ def main():
 
     stop_payload = json.dumps({'op': 'stop'})
     mqtt_publish(args.mqtt_host, args.mqtt_port, args.mqtt_topic,
-                 args.mqtt_user, args.mqtt_password, stop_payload)
+                 args.mqtt_user, args.mqtt_password, stop_payload, args.mqtt_qos)
 
     print(f'\n统计: 共保存 {total_packets} 个报文')
     print(f'  输出目录: {os.path.abspath(out_dir)}')

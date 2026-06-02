@@ -101,8 +101,10 @@ def parse_args():
                         help='MQTT 用户名 (默认: admin)')
     parser.add_argument('--mqtt-password', type=str, default='123456',
                         help='MQTT 密码 (默认: 123456)')
-    parser.add_argument('--mqtt-qos', type=int, default=0, choices=[0, 1, 2],
-                        help='MQTT QoS 级别 (默认: 0)')
+    parser.add_argument('--mqtt-qos', type=int, default=1, choices=[0, 1, 2],
+                        help='MQTT QoS 级别 (默认: 1)')
+    parser.add_argument('--channel', '-c', type=str, default='1',
+                        help='WiFi 信道号，逗号分隔多信道，用于 MQTT 通知 (默认: 1)')
     return parser.parse_args()
 
 
@@ -203,7 +205,7 @@ def main():
     write_pcap_header(f, linktype=linktype)
 
     # MQTT 启动通知
-    start_payload = json.dumps({'op': 'start', 'mod': args.type, 'channel': '1'})
+    start_payload = json.dumps({'op': 'start', 'mod': args.type, 'channel': args.channel})
     mqtt_publish(args.mqtt_host, args.mqtt_port, args.mqtt_topic,
                  args.mqtt_user, args.mqtt_password, start_payload, args.mqtt_qos)
 

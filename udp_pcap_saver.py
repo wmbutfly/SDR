@@ -120,6 +120,58 @@ def parse_radiotap(data):
     return info
 
 
+def parse_bt_phdr(data):
+    if len(data) < 6:
+        return {}
+    ch = struct.unpack_from('<H', data, 0)[0]
+    rssi = struct.unpack_from('<b', data, 4)[0]
+    info = {'channel': ch, 'rssi': rssi}
+    ll = data[5:]
+    if len(ll) < 2:
+        return info
+    pdu_type = ll[0] & 0x0f
+    info['pdu_type'] = {0:'ADV_IND',1:'ADV_DIRECT',2:'ADV_NONCONN',
+                        3:'SCAN_REQ',4:'SCAN_RSP',5:'CONNECT_REQ',
+                        6:'ADV_SCAN_IND'}.get(pdu_type, f'TYPE{pdu_type}')
+    if pdu_type in (0, 1, 2, 6):
+        if len(ll) >= 8:
+            info['mac'] = ':'.join(f'{b:02x}' for b in ll[2:8]).upper()
+    adv = ll[8:]
+    if adv and pdu_type in (0, 2, 4, 6):
+        name = b''
+        i = 0
+        while i < len(adv):
+            if i + 1 >= len(adv):
+                break
+            length = adv[i]
+            if length == 0:
+                break
+            if i + length >= len(adv):
+                break
+            ad_type = adv[i+1]
+            if ad_type == 0x09 or ad_type == 0x08:
+                try:
+                    name = adv[i+2:i+1+length]
+                    info['name'] = name.decode('utf-8', errors='replace')
+                except:
+                    pass
+            i += length + 1
+    return info
+
+
+def parse_bt_ll(data):
+    if len(data) < 2:
+        return {}
+    pdu_type = data[0] & 0x0f
+    info = {'pdu_type': {0:'ADV_IND',1:'ADV_DIRECT',2:'ADV_NONCONN',
+                         3:'SCAN_REQ',4:'SCAN_RSP',5:'CONNECT_REQ',
+                         6:'ADV_SCAN_IND'}.get(pdu_type, f'TYPE{pdu_type}')}
+    if pdu_type in (0, 1, 2, 6):
+        if len(data) >= 8:
+            info['mac'] = ':'.join(f'{b:02x}' for b in data[2:8]).upper()
+    return info
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description='UDP 监听 + PCAP 保存')
     parser.add_argument('--ip', type=str, default='0.0.0.0',
@@ -308,6 +360,26 @@ def main():
                     if 'antenna' in rt:
                         parts.append(f"ant={rt['antenna']}")
                     extra = '  |  ' + '  '.join(parts)
+            elif args.type in ('bt', 'bt_phdr'):
+                if linktype == LINKTYPE_BLUETOOTH_LE_LL_WITH_PHDR:
+                    bt = parse_bt_phdr(data)
+                    if bt:
+                        parts = []
+                        parts.append(f"ch={bt.get('channel','?')}")
+                        parts.append(f"rssi={bt.get('rssi',0)}dBm")
+                        parts.append(bt.get('pdu_type','?'))
+                        if 'mac' in bt:
+                            parts.append(bt['mac'])
+                        if 'name' in bt:
+                            parts.append(f"\"{bt['name']}\"")
+                        extra = '  |  ' + '  '.join(parts)
+                elif linktype == LINKTYPE_BLUETOOTH_LE_LL:
+                    bt = parse_bt_ll(data)
+                    if bt:
+                        parts = [bt.get('pdu_type','?')]
+                        if 'mac' in bt:
+                            parts.append(bt['mac'])
+                        extra = '  |  ' + '  '.join(parts)
 
             print(f'  [#{total_packets:04d}] [{ts_str}] {addr[0]}:{args.port} → {len(data)}B{extra}', flush=True)
             print(f'         hex: {hex_preview}', flush=True)

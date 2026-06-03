@@ -85,21 +85,20 @@ def parse_radiotap(data):
     length = struct.unpack_from('<H', data, 2)[0]
     if len(data) < length or length < 8:
         return {}
-    present = struct.unpack_from('<I', data, 4)[0]
     info = {'version': version, 'length': length}
-    offset = 8
-    for bit in range(15):
+    offset = 4
+    present = struct.unpack_from('<I', data, offset)[0]
+    offset += 4
+    while present & 0x80000000:
+        present = (present & ~0x80000000) | struct.unpack_from('<I', data, offset)[0]
+        offset += 4
+    for bit in range(29):
         if not (present & (1 << bit)):
             continue
-        if bit == 0:   # TSFT
-            offset += 8
-        elif bit == 1: # Flags
-            info['flags'] = data[offset]
-            offset += 1
-        elif bit == 2: # Rate
-            info['rate'] = data[offset]
-            offset += 1
-        elif bit == 3: # Channel
+        if bit == 0:   offset += 8  # TSFT
+        elif bit == 1: info['flags'] = data[offset]; offset += 1
+        elif bit == 2: info['rate'] = data[offset]; offset += 1
+        elif bit == 3:  # Channel
             freq = struct.unpack_from('<H', data, offset)[0]
             if 2400 <= freq <= 2500:
                 ch = (freq - 2407) // 5
@@ -113,17 +112,11 @@ def parse_radiotap(data):
             info['channel'] = f'{ch}{f"({band})" if band else ""}'
             info['freq'] = freq
             offset += 4
-        elif bit == 5: # RSSI (dBm, signed)
-            info['rssi'] = struct.unpack_from('<b', data, offset)[0]
-            offset += 1
-        elif bit == 6: # Noise (dBm, signed)
-            info['noise'] = struct.unpack_from('<b', data, offset)[0]
-            offset += 1
-        elif bit == 11: # Antenna
-            info['antenna'] = data[offset]
-            offset += 1
-        else:
-            offset += 2
+        elif bit == 5: info['rssi'] = struct.unpack_from('<b', data, offset)[0]; offset += 1  # RSSI
+        elif bit == 6: info['noise'] = struct.unpack_from('<b', data, offset)[0]; offset += 1
+        elif bit == 11: info['antenna'] = data[offset]; offset += 1
+        elif bit == 14: info['rx_flags'] = struct.unpack_from('<H', data, offset)[0]; offset += 2
+        else: offset += 2
     return info
 
 

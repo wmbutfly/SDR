@@ -80,6 +80,26 @@ docker run -d --name emqx --restart always \
 Dashboard: `http://localhost:18083` 账号 `admin` 密码 `public`。
 连接需用户认证，创建方式见源码或使用匿名模式。
 
+## 现场解析
+
+运行中实时解析并显示：
+
+| 类型 | 解析内容 | 示例 |
+|------|---------|------|
+| `wifi` | 信道(2.4G/5G), RSSI, 速率, 天线 | `ch=1(2.4G) rssi=-89dBm rate=1Mbps ant=0` |
+| `bt_phdr` | 信道, RSSI, PDU类型, MAC, 设备名 | `ch=37 rssi=-65dBm ADV_IND AA:BB:CC:DD:EE:FF "BEACON"` |
+| `bt` | PDU类型, MAC | `ADV_IND AA:BB:CC:DD:EE:FF` |
+
+```bash
+# 输出示例 - WiFi
+python3 udp_pcap_saver.py -t wifi
+# [#0001] [10:19:45.926] ... 331B  |  ch=1(2.4G)  rssi=-89dBm  rate=1Mbps  ant=0
+
+# 输出示例 - BT
+python3 udp_pcap_saver.py -t bt_phdr
+# [#0001] ... 50B  |  ch=37  rssi=-65dBm  ADV_IND  AA:BB:CC:DD:EE:FF  "BEACON"
+```
+
 ## BT 接收
 
 用法与 WiFi 相同，改 `-t` 即可。pcap 文件 linktype=251/256，Wireshark 自动按 BLE 解析。
@@ -113,10 +133,34 @@ kill $(cat /tmp/pcap_saver.pid)
 
 ## 输出示例
 
+### WiFi (802.11 + Radiotap)
+
+实时解析信道、RSSI、速率、天线：
+
 ```
-[#0001] [15:26:28.294] 127.0.0.1:9020 → 100B
-         hex: e96cb1036ecb7e73ed304bfbda7789435b613d5cb4fe03d12f2e2ab4e28d2b6a...
-       ascii: .l..n.~s.0K..w.C[a=\..../.*...+j
+[#0001] [10:19:45.926] 172.21.32.1:8890 → 331B  |  ch=1(2.4G)  rssi=-89dBm  rate=1Mbps  ant=0
+         hex: 00003c002f4010a0...
+       ascii: ..<./@..
+```
+
+### BT (Bluetooth LE + PHDR)
+
+实时解析信道、RSSI、PDU 类型、MAC 地址、设备名：
+
+```
+[#0001] ... → 50B  |  ch=37  rssi=-65dBm  ADV_IND  AA:BB:CC:DD:EE:FF  "BEACON"
+         hex: ...
+       ascii: ...
+```
+
+### BT (纯 BLE LL)
+
+解析 PDU 类型、MAC 地址：
+
+```
+[#0002] ... → 20B  |  ADV_IND  AA:BB:CC:DD:EE:FF
+         hex: ...
+       ascii: ...
 ```
 
 ## 滚动文件命名

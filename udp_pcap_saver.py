@@ -166,7 +166,7 @@ def trim_total_size(directory, prefix, max_bytes):
             pass
 
 
-def mqtt_publish(host, port, topic, user, password, payload, qos=0):
+def mqtt_publish(host, port, topic, user, password, payload, qos=0, retain=False):
     try:
         cmd = ['mosquitto_pub',
                '-h', host,
@@ -176,6 +176,8 @@ def mqtt_publish(host, port, topic, user, password, payload, qos=0):
                '-P', password,
                '-m', payload,
                '-q', str(qos)]
+        if retain:
+            cmd.append('-r')
         subprocess.run(cmd, capture_output=True, timeout=5)
     except Exception as e:
         print(f'  [MQTT 失败] {e}', flush=True)
@@ -207,7 +209,8 @@ def main():
     # MQTT 启动通知
     start_payload = json.dumps({'op': 'start', 'mod': args.type, 'channel': args.channel})
     mqtt_publish(args.mqtt_host, args.mqtt_port, args.mqtt_topic,
-                 args.mqtt_user, args.mqtt_password, start_payload, args.mqtt_qos)
+                 args.mqtt_user, args.mqtt_password, start_payload,
+                 args.mqtt_qos, retain=True)
 
     print(f'UDP → PCAP 保存器已启动')
     print(f'  监听: {args.ip}:{args.port}')
@@ -270,7 +273,8 @@ def main():
 
     stop_payload = json.dumps({'op': 'stop'})
     mqtt_publish(args.mqtt_host, args.mqtt_port, args.mqtt_topic,
-                 args.mqtt_user, args.mqtt_password, stop_payload, args.mqtt_qos)
+                 args.mqtt_user, args.mqtt_password, stop_payload,
+                 args.mqtt_qos, retain=True)
 
     print(f'\n统计: 共保存 {total_packets} 个报文')
     print(f'  输出目录: {os.path.abspath(out_dir)}')

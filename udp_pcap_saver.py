@@ -180,7 +180,7 @@ def parse_args():
                         help='监听端口 (默认: 8890)')
     parser.add_argument('--type', '-t', type=str, default='wifi',
                         choices=list(TYPE_LINKTYPE.keys()),
-                        help='数据类型，决定 pcap linktype 和文件名 (默认: wifi)')
+                        help='数据类型: wifi(802.11+Radiotap), bt(纯BLE LL), bt_phdr(带射频头的BLE) (默认: wifi)')
     parser.add_argument('--linktype', type=int, default=None,
                         help='强制指定 pcap linktype，覆盖 --type 的自动选择')
     parser.add_argument('--output', '-o', type=str, default=None,

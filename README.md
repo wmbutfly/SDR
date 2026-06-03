@@ -87,8 +87,8 @@ Dashboard: `http://localhost:18083` 账号 `admin` 密码 `public`。
 | 类型 | 解析内容 | 示例 |
 |------|---------|------|
 | `wifi` | 信道(2.4G/5G), RSSI, 速率, 天线 | `ch=1(2.4G) rssi=-89dBm rate=1Mbps ant=0` |
+| `bt` | PDU类型, MAC, 设备名 | `ADV_SCAN_IND  AA:BB:CC:DD:EE:FF  "BEACON"` |
 | `bt_phdr` | 信道, RSSI, PDU类型, MAC, 设备名 | `ch=37 rssi=-65dBm ADV_IND AA:BB:CC:DD:EE:FF "BEACON"` |
-| `bt` | PDU类型, MAC | `ADV_IND AA:BB:CC:DD:EE:FF` |
 
 ```bash
 # 输出示例 - WiFi

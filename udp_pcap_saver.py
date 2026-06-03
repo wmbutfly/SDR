@@ -78,6 +78,55 @@ def write_pcap_packet(f, data, ts=None):
     f.write(pkt_header)
     f.write(data)
 
+def parse_radiotap(data):
+    if len(data) < 8:
+        return {}
+    version = data[0]
+    length = struct.unpack_from('<H', data, 2)[0]
+    if len(data) < length or length < 8:
+        return {}
+    present = struct.unpack_from('<I', data, 4)[0]
+    info = {'version': version, 'length': length}
+    offset = 8
+    for bit in range(15):
+        if not (present & (1 << bit)):
+            continue
+        if bit == 0:   # TSFT
+            offset += 8
+        elif bit == 1: # Flags
+            info['flags'] = data[offset]
+            offset += 1
+        elif bit == 2: # Rate
+            info['rate'] = data[offset]
+            offset += 1
+        elif bit == 3: # Channel
+            freq = struct.unpack_from('<H', data, offset)[0]
+            if 2400 <= freq <= 2500:
+                ch = (freq - 2407) // 5
+                band = '2.4G'
+            elif 5000 <= freq <= 6000:
+                ch = (freq - 5000) // 5
+                band = '5G'
+            else:
+                ch = f'{freq}MHz'
+                band = ''
+            info['channel'] = f'{ch}{f"({band})" if band else ""}'
+            info['freq'] = freq
+            offset += 4
+        elif bit == 5: # RSSI (dBm, signed)
+            info['rssi'] = struct.unpack_from('<b', data, offset)[0]
+            offset += 1
+        elif bit == 6: # Noise (dBm, signed)
+            info['noise'] = struct.unpack_from('<b', data, offset)[0]
+            offset += 1
+        elif bit == 11: # Antenna
+            info['antenna'] = data[offset]
+            offset += 1
+        else:
+            offset += 2
+    return info
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description='UDP 监听 + PCAP 保存')
     parser.add_argument('--ip', type=str, default='0.0.0.0',
@@ -252,7 +301,22 @@ def main():
                 hex_preview = hex_str
             ascii_str = ''.join(chr(b) if 32 <= b < 127 else '.' for b in data[:32])
 
-            print(f'  [#{total_packets:04d}] [{ts_str}] {addr[0]}:{args.port} → {len(data)}B', flush=True)
+            extra = ''
+            if args.type == 'wifi' and linktype == LINKTYPE_IEEE802_11_RADIO:
+                rt = parse_radiotap(data)
+                if rt.get('channel'):
+                    parts = []
+                    parts.append(f"ch={rt['channel']}")
+                    if 'rssi' in rt:
+                        parts.append(f"rssi={rt['rssi']}dBm")
+                    if 'rate' in rt:
+                        rate = rt['rate'] * 0.5
+                        parts.append(f"rate={rate:.0f}Mbps")
+                    if 'antenna' in rt:
+                        parts.append(f"ant={rt['antenna']}")
+                    extra = '  |  ' + '  '.join(parts)
+
+            print(f'  [#{total_packets:04d}] [{ts_str}] {addr[0]}:{args.port} → {len(data)}B{extra}', flush=True)
             print(f'         hex: {hex_preview}', flush=True)
             print(f'       ascii: {ascii_str}', flush=True)
 

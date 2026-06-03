@@ -37,6 +37,7 @@ python3 udp_pcap_saver.py
 | `--mqtt-user` | `admin` | MQTT 用户名 |
 | `--mqtt-password` | `123456` | MQTT 密码 |
 | `--mqtt-qos` | `1` | MQTT QoS 级别（0/1/2） |
+| `--channel`, `-c` | `1` | WiFi 信道，逗号分隔多信道 |
 
 ## 类型
 
@@ -80,6 +81,15 @@ python3 udp_pcap_saver.py -t wifi --linktype 1
 ## MQTT 通知
 
 启动时发送 `{"op": "start", "mod": "wifi", "channel": "1"}`，停止时发送 `{"op": "stop"}`。
+
+消息为 **QoS 1 + 保留(retain)**，确保至少送达一次，新订阅者立即拿到当前状态。不限制订阅者数量。
+
+```bash
+# 订阅端无需特殊参数，正常 sub 即可（第一条就是保留消息）
+mosquitto_sub -h localhost -p 1883 -t FromSDR -u admin -P 123456
+
+# 或 MQTTX 直接 subscribe FromSDR
+```
 
 EMQX broker 运行在 Docker：
 

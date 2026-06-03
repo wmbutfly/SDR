@@ -27,8 +27,14 @@ LINKTYPE_BLUETOOTH_LE_LL_WITH_PHDR = 256
 # type 名称 → linktype 映射
 TYPE_LINKTYPE = {
     'wifi': LINKTYPE_IEEE802_11_RADIO,
-    'ble': LINKTYPE_BLUETOOTH_LE_LL,
-    'ble_phdr': LINKTYPE_BLUETOOTH_LE_LL_WITH_PHDR,
+    'bt': LINKTYPE_BLUETOOTH_LE_LL,
+    'bt_phdr': LINKTYPE_BLUETOOTH_LE_LL_WITH_PHDR,
+}
+
+TYPE_DESC = {
+    'wifi': '802.11 + Radiotap',
+    'bt': 'Bluetooth LE LL',
+    'bt_phdr': 'Bluetooth LE LL + PHDR',
 }
 
 # type 名称 → 描述
@@ -104,7 +110,7 @@ def parse_args():
     parser.add_argument('--mqtt-qos', type=int, default=1, choices=[0, 1, 2],
                         help='MQTT QoS 级别 (默认: 1)')
     parser.add_argument('--channel', '-c', type=str, default='1',
-                        help='WiFi 信道号，逗号分隔多信道，用于 MQTT 通知 (默认: 1)')
+                        help='WiFi 信道号 (默认: 1)，仅 wifi 类型有效')
     return parser.parse_args()
 
 
@@ -207,7 +213,10 @@ def main():
     write_pcap_header(f, linktype=linktype)
 
     # MQTT 启动通知
-    start_payload = json.dumps({'op': 'start', 'mod': args.type, 'channel': args.channel})
+    start_msg = {'op': 'start', 'mod': args.type}
+    if args.type == 'wifi':
+        start_msg['channel'] = args.channel
+    start_payload = json.dumps(start_msg)
     mqtt_publish(args.mqtt_host, args.mqtt_port, args.mqtt_topic,
                  args.mqtt_user, args.mqtt_password, start_payload,
                  args.mqtt_qos, retain=True)

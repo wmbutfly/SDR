@@ -24,12 +24,12 @@ python3 udp_pcap_saver.py
 |------|------|------|
 | `--ip` | `0.0.0.0` | 监听 IP |
 | `--port` | `8890` | 监听端口 |
-| `-t`, `--type` | `wifi` | 数据类型：`wifi`, `ble`, `ble_phdr` |
+| `-t`, `--type` | `wifi` | 数据类型：`wifi`, `bt`, `bt_phdr` |
 | `-o`, `--output` | 当前目录 | 输出目录，不存在自动创建 |
 | `-s`, `--max-size` | `1M` | 单文件上限，超限自动滚动 |
 | `-m`, `--max-total` | `1G` | 总磁盘占用上限，超限删最老 |
 | `-n`, `--max-files` | `0` | 总文件数上限，超限删最老（0=不限） |
-| `-c`, `--channel` | `1` | WiFi 信道号，逗号分隔多信道（如 `1,6,11`） |
+| `-c`, `--channel` | `1` | WiFi 信道号，仅 wifi 有效 |
 | `--linktype` | 自动 | 强制指定 pcap linktype，覆盖 `--type` |
 | `--mqtt-host` | `localhost` | MQTT broker 地址 |
 | `--mqtt-port` | `1883` | MQTT broker 端口 |
@@ -37,50 +37,23 @@ python3 udp_pcap_saver.py
 | `--mqtt-user` | `admin` | MQTT 用户名 |
 | `--mqtt-password` | `123456` | MQTT 密码 |
 | `--mqtt-qos` | `1` | MQTT QoS 级别（0/1/2） |
-| `--channel`, `-c` | `1` | WiFi 信道，逗号分隔多信道 |
 
 ## 类型
 
 | `--type` | 文件名 | linktype | 说明 |
 |----------|--------|----------|------|
 | `wifi` | `wifi_20260602_141008.pcap` | 127 | 802.11 + Radiotap |
-| `ble` | `ble_20260602_141008.pcap` | 251 | Bluetooth LE LL |
-| `ble_phdr` | `ble_phdr_20260602_141008.pcap` | 256 | Bluetooth LE LL + PHDR |
-
-## 示例
-
-```bash
-# 基本（默认 1M 切文件，总空间 1G）
-python3 udp_pcap_saver.py
-
-# 指定 IP 端口 + 类型
-python3 udp_pcap_saver.py --ip 0.0.0.0 --port 8890 -t wifi
-
-# 输出到指定目录
-python3 udp_pcap_saver.py -t wifi -o /data/captures/
-
-# 每 50MB 切文件，总空间 500MB
-python3 udp_pcap_saver.py -t wifi -o /data/captures/ -s 50M -m 500M
-
-# 最多 20 个文件 + 总空间 1GB
-python3 udp_pcap_saver.py -t wifi -s 10M -n 20 -m 1G
-
-# BLE 数据
-python3 udp_pcap_saver.py -t ble -s 10M -m 200M
-
-# 指定信道
-python3 udp_pcap_saver.py -c 1,6,11
-
-# 自定义 MQTT
-python3 udp_pcap_saver.py --mqtt-host 192.168.1.100 --mqtt-qos 1
-
-# 手动指定 linktype
-python3 udp_pcap_saver.py -t wifi --linktype 1
-```
+| `bt` | `bt_20260602_141008.pcap` | 251 | Bluetooth LE LL |
+| `bt_phdr` | `bt_phdr_20260602_141008.pcap` | 256 | Bluetooth LE LL + PHDR |
 
 ## MQTT 通知
 
-启动时发送 `{"op": "start", "mod": "wifi", "channel": "1"}`，停止时发送 `{"op": "stop"}`。
+启动时发送 MQTT 通知：
+
+- **wifi**: `{"op": "start", "mod": "wifi", "channel": "1"}`
+- **bt/bt_phdr**: `{"op": "start", "mod": "bt"}`（无 channel）
+
+停止时统一发送 `{"op": "stop"}`。
 
 消息为 **QoS 1 + 保留(retain)**，确保至少送达一次，新订阅者立即拿到当前状态。不限制订阅者数量。
 
@@ -107,12 +80,12 @@ docker run -d --name emqx --restart always \
 Dashboard: `http://localhost:18083` 账号 `admin` 密码 `public`。
 连接需用户认证，创建方式见源码或使用匿名模式。
 
-## BLE 接收
+## BT 接收
 
-用法与 WiFi 相同，改 `-t` 即可。pcap 文件 linktype=251，Wireshark 自动按 BLE 解析。
+用法与 WiFi 相同，改 `-t` 即可。pcap 文件 linktype=251/256，Wireshark 自动按 BLE 解析。
 
 ```bash
-python3 udp_pcap_saver.py -t ble -o /data/ble_captures/ -s 10M -m 200M
+python3 udp_pcap_saver.py -t bt -o /data/bt_captures/ -s 10M -m 200M
 ```
 
 ## WSL2 转发

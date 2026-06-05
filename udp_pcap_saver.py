@@ -199,8 +199,8 @@ def parse_args():
                         help='MQTT 主题 (默认: FromSDR)')
     parser.add_argument('--mqtt-user', type=str, default='admin',
                         help='MQTT 用户名 (默认: admin)')
-    parser.add_argument('--mqtt-password', type=str, default='123456',
-                        help='MQTT 密码 (默认: 123456)')
+    parser.add_argument('--mqtt-password', type=str, default='123456..',
+                        help='MQTT 密码 (默认: 123456..)')
     parser.add_argument('--mqtt-qos', type=int, default=1, choices=[0, 1, 2],
                         help='MQTT QoS 级别 (默认: 1)')
     parser.add_argument('--channel', '-c', type=str, default='1',

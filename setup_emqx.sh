@@ -12,9 +12,9 @@ set -euo pipefail
 MQTT_PORT=1883
 DASH_PORT=18083
 DASH_USER=admin
-DASH_PASS=123456
+DASH_PASS=123456..
 MQTT_USER=admin
-MQTT_PASS=123456
+MQTT_PASS=123456..
 EMQX_IMAGE=emqx/emqx:latest
 CONTAINER_NAME=emqx
 
@@ -51,8 +51,13 @@ else
 fi
 
 # --- 2. 启动 EMQX ---
-info "拉取 EMQX 镜像..."
-docker pull $EMQX_IMAGE
+info "检查 EMQX 镜像 $EMQX_IMAGE..."
+if ! docker image inspect $EMQX_IMAGE >/dev/null 2>&1; then
+  info "本地无镜像，尝试拉取..."
+  docker pull $EMQX_IMAGE || error "拉取镜像失败，请检查网络或预加载镜像"
+else
+  info "使用本地镜像"
+fi
 
 # 清理旧容器
 docker rm -f $CONTAINER_NAME 2>/dev/null || true
@@ -69,19 +74,23 @@ docker run -d \
 # --- 3. 等待就绪 ---
 info "等待 EMQX 启动..."
 for i in $(seq 1 30); do
-  if curl -sf http://localhost:$DASH_PORT/api/v5/login >/dev/null 2>&1; then
+  # /api/v5/login 是 POST 接口，GET 会返回 405 导致 -f 失败卡 60s
+  if curl -sf http://localhost:$DASH_PORT/api/v5/status >/dev/null 2>&1; then
     break
   fi
   sleep 2
 done
 
 # --- 4. 登录获取 token ---
-TOKEN=$(curl -sf -X POST http://localhost:$DASH_PORT/api/v5/login \
-  -H "Content-Type: application/json" \
-  -d "{\"username\":\"$DASH_USER\",\"password\":\"public\"}" \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])" 2>/dev/null) || {
-    error "EMQX Dashboard 登录失败，请检查 http://localhost:$DASH_PORT"
-}
+TOKEN=""
+for try_pass in "public" "$DASH_PASS"; do
+  TOKEN=$(curl -sf -X POST http://localhost:$DASH_PORT/api/v5/login \
+    -H "Content-Type: application/json" \
+    -d "{\"username\":\"$DASH_USER\",\"password\":\"$try_pass\"}" \
+    | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])" 2>/dev/null)
+  [ -n "$TOKEN" ] && break
+done
+[ -z "$TOKEN" ] && error "EMQX Dashboard 登录失败，请检查 http://localhost:$DASH_PORT"
 
 # --- 5. 创建认证 + 添加用户 + 关闭匿名 ---
 info "创建内置数据库认证..."

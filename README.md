@@ -35,7 +35,7 @@ python3 udp_pcap_saver.py
 | `--mqtt-port` | `1883` | MQTT broker 端口 |
 | `--mqtt-topic` | `FromSDR` | MQTT 主题 |
 | `--mqtt-user` | `admin` | MQTT 用户名 |
-| `--mqtt-password` | `123456` | MQTT 密码 |
+| `--mqtt-password` | `123456..` | MQTT 密码 |
 | `--mqtt-qos` | `1` | MQTT QoS 级别（0/1/2） |
 
 ## 类型
@@ -59,7 +59,7 @@ python3 udp_pcap_saver.py
 
 ```bash
 # 订阅端无需特殊参数，正常 sub 即可（第一条就是保留消息）
-mosquitto_sub -h localhost -p 1883 -t FromSDR -u admin -P 123456
+mosquitto_sub -h localhost -p 1883 -t FromSDR -u admin -P 123456..
 
 # 或 MQTTX 直接 subscribe FromSDR
 ```
